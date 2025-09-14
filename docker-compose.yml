@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:16-alpine
+    container_name: finwise-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: finwise
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - finwise-network
+
+  # Redis Cache & Queue
+  redis:
+    image: redis:7-alpine
+    container_name: finwise-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - finwise-network
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
+  # NestJS Backend API
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: finwise-api
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/finwise?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: changeme-super-secret-key
+      APP_BASE_URL: http://localhost:3000
+    depends_on:
+      - db
+      - redis
+    networks:
+      - finwise-network
+    volumes:
+      - ./backend:/app
+      - api_node_modules:/app/node_modules
+
+  # Next.js Frontend
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: finwise-web
+    ports:
+      - "3001:3000"
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:3000/v1
+      NODE_ENV: development
+    depends_on:
+      - api
+    networks:
+      - finwise-network
+    volumes:
+      - ./frontend:/app
+      - web_node_modules:/app/node_modules
+      - web_next:/app/.next
+
+volumes:
+  postgres_data:
+  redis_data:
+  api_node_modules:
+  web_node_modules:
+  web_next:
+
+networks:
+  finwise-network:
+    driver: bridge
